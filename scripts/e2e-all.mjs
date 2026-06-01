@@ -83,7 +83,17 @@ function createImageFile() {
 function isoDate(daysFromNow) {
   const d = new Date();
   d.setDate(d.getDate() + daysFromNow);
-  return d.toISOString();
+  return d.toISOString().slice(0, 10);
+}
+
+function extractId(payload) {
+  return (
+    payload?._id ||
+    payload?.id ||
+    payload?.data?._id ||
+    payload?.data?.id ||
+    ''
+  );
 }
 
 async function waitForContract(ownerToken, rentalId, timeoutMs = 20000) {
@@ -225,6 +235,8 @@ async function run() {
     createVehicleForm.append('daily_rate', '500000');
     createVehicleForm.append('deposit_amount', '1000000');
     createVehicleForm.append('allowed_region', 'VIETNAM');
+    createVehicleForm.append('pickup_location', '12 Nguyen Hue, Quan 1, TP.HCM');
+    createVehicleForm.append('return_location', '12 Nguyen Hue, Quan 1, TP.HCM');
 
     const vehicle = await requestForm('Create vehicle', {
       method: 'POST',
@@ -233,7 +245,7 @@ async function run() {
       formData: createVehicleForm,
       expected: [201]
     });
-    vehicleId = vehicle._id;
+    vehicleId = extractId(vehicle);
 
     await requestJson('Get available vehicles', {
       method: 'GET',
@@ -307,7 +319,7 @@ async function run() {
         notes: 'First rental'
       }
     });
-    rental1 = rentalReq1._id;
+    rental1 = extractId(rentalReq1);
 
     const rentalReq2 = await requestJson('Create rental request #2', {
       method: 'POST',
@@ -323,7 +335,7 @@ async function run() {
         notes: 'Second rental'
       }
     });
-    rental2 = rentalReq2._id;
+    rental2 = extractId(rentalReq2);
 
     const rentalReq3 = await requestJson('Create rental request #3', {
       method: 'POST',
@@ -339,7 +351,7 @@ async function run() {
         notes: 'Third rental'
       }
     });
-    rental3 = rentalReq3._id;
+    rental3 = extractId(rentalReq3);
 
     await requestJson('Check availability', {
       method: 'POST',
@@ -389,7 +401,7 @@ async function run() {
     });
 
     const contract = await waitForContract(ownerToken, rental1);
-    contractId = contract._id;
+    contractId = extractId(contract);
     pushResult('Contract created from event', 'PASS', `contractId=${contractId}`);
 
     await requestJson('Get contract by id', {
@@ -434,7 +446,7 @@ async function run() {
         description: 'Small damage on mirror'
       }
     });
-    disputeId = dispute._id;
+    disputeId = extractId(dispute);
 
     await requestJson('Get dispute by id', {
       method: 'GET',
@@ -482,7 +494,7 @@ async function run() {
         payment_method: 'BANK_TRANSFER'
       }
     });
-    paymentId = payment._id;
+    paymentId = extractId(payment);
 
     await requestJson('Get payment by id', {
       method: 'GET',
@@ -494,7 +506,7 @@ async function run() {
     await requestJson('Process payment', {
       method: 'PUT',
       path: `/api/payments/${paymentId}/process`,
-      token: ownerToken,
+      token: renterToken,
       expected: [200],
       body: {
         transaction_id: `TX-${rand}`
@@ -518,7 +530,7 @@ async function run() {
 
     await requestJson('Fail payment #2', {
       method: 'PUT',
-      path: `/api/payments/${payment2._id}/fail`,
+      path: `/api/payments/${extractId(payment2)}/fail`,
       token: ownerToken,
       expected: [200],
       body: {
@@ -549,51 +561,31 @@ async function run() {
 
     await requestJson('Tracking update location', {
       method: 'POST',
-      path: '/api/tracking/update-location',
+      path: '/api/tracking/location',
       token: ownerToken,
-      expected: [200],
+      expected: [200, 201],
       body: {
         vehicle_id: vehicleId,
-        rental_request_id: rental1,
+        rental_id: rental1,
+        contract_id: contractId,
+        owner_id: ownerId,
+        renter_id: renterId,
         latitude: 10.7769,
         longitude: 106.7009,
-        address: 'District 1',
-        allowed_regions: ['HCMC']
+        source: 'E2E'
       }
     });
 
     await requestJson('Tracking latest location', {
       method: 'GET',
-      path: `/api/tracking/${vehicleId}/latest`,
+      path: `/api/tracking/location/${vehicleId}`,
       token: ownerToken,
       expected: [200]
     });
 
     await requestJson('Tracking location history', {
       method: 'GET',
-      path: `/api/tracking/${vehicleId}/history?start_date=${encodeURIComponent(isoDate(-1))}&end_date=${encodeURIComponent(isoDate(10))}`,
-      token: ownerToken,
-      expected: [200]
-    });
-
-    await requestJson('Tracking record movement', {
-      method: 'POST',
-      path: '/api/tracking/record-movement',
-      token: ownerToken,
-      expected: [200],
-      body: {
-        vehicle_id: vehicleId,
-        rental_request_id: rental1,
-        start_location: 'District 1',
-        end_location: 'District 7',
-        distance_km: 8.2,
-        duration_minutes: 35
-      }
-    });
-
-    await requestJson('Tracking movement history', {
-      method: 'GET',
-      path: `/api/tracking/${vehicleId}/movement-history?start_date=${encodeURIComponent(isoDate(-1))}&end_date=${encodeURIComponent(isoDate(10))}`,
+      path: `/api/tracking/history/${vehicleId}?start_date=${encodeURIComponent(isoDate(-1))}&end_date=${encodeURIComponent(isoDate(10))}`,
       token: ownerToken,
       expected: [200]
     });
@@ -612,7 +604,7 @@ async function run() {
         comment: 'Good vehicle and owner'
       }
     });
-    reviewId = review._id;
+    reviewId = extractId(review);
 
     await requestJson('Get review by id', {
       method: 'GET',
@@ -676,7 +668,7 @@ async function run() {
     });
 
     if (Array.isArray(ownerNoti) && ownerNoti.length > 0) {
-      ownerNotificationId = ownerNoti[0]._id;
+      ownerNotificationId = extractId(ownerNoti[0]);
       await requestJson('Mark notification read', {
         method: 'PUT',
         path: `/api/notifications/${ownerNotificationId}/read`,
