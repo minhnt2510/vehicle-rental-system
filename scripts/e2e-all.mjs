@@ -513,6 +513,27 @@ async function run() {
       }
     });
 
+    await requestJson('Renter confirm pickup', {
+      method: 'PATCH',
+      path: `/api/rentals/${rental1}/confirm-pickup`,
+      token: renterToken,
+      expected: [200]
+    });
+
+    await requestJson('Renter request return', {
+      method: 'PATCH',
+      path: `/api/rentals/${rental1}/return`,
+      token: renterToken,
+      expected: [200]
+    });
+
+    await requestJson('Owner confirm return', {
+      method: 'PATCH',
+      path: `/api/rentals/${rental1}/confirm-return`,
+      token: ownerToken,
+      expected: [200]
+    });
+
     const payment2 = await requestJson('Create payment #2', {
       method: 'POST',
       path: '/api/payments',

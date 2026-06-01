@@ -178,6 +178,9 @@ services:
       - review_service_node_modules:/app/node_modules
     env_file:
       - ./review-service/.env
+    environment:
+      RENTAL_SERVICE_URL: http://rental-service:3003
+      SERVICE_TOKEN: internal-service-token
     networks:
       - app-network
 
