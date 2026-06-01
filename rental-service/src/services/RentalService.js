@@ -1,10 +1,16 @@
 import axios from 'axios';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { EventBus } from '../events/EventBus.js';
 import { RentalRepository } from '../repositories/RentalRepository.js';
 
 const rentalRepository = new RentalRepository();
 const eventBus = new EventBus();
+const CONTRACT_SERVICE_URL = process.env.CONTRACT_SERVICE_URL || 'http://localhost:3004';
+const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005';
+const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'internal-service-token';
+const SAGA_MAX_RETRY = Number.parseInt(process.env.SAGA_MAX_RETRY || '2', 10);
+const SAGA_RETRY_DELAY_MS = Number.parseInt(process.env.SAGA_RETRY_DELAY_MS || '3000', 10);
 
 const RENTAL_STATUSES = {
   PENDING: 'PENDING',
@@ -110,6 +116,8 @@ function normalizeDayStart(dateInput) {
   return date;
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export class RentalService {
   async fetchUserProfile(userId) {
     try {
@@ -171,6 +179,166 @@ export class RentalService {
     } catch (error) {
       console.log('Sync contract status failed:', error.message);
     }
+  }
+
+  buildSagaStep(step, status, message) {
+    return {
+      step,
+      status,
+      message,
+      at: new Date()
+    };
+  }
+
+  async updateSagaState(rentalId, baseSaga, patch = {}) {
+    const nextSaga = {
+      ...baseSaga,
+      ...patch,
+      updated_at: new Date()
+    };
+    await rentalRepository.update(rentalId, { booking_saga: nextSaga });
+    return nextSaga;
+  }
+
+  buildContractPayload(rental) {
+    return {
+      rental_request_id: rental._id,
+      renter_id: rental.renter_id,
+      owner_id: rental.owner_id,
+      vehicle_id: rental.vehicle_id,
+      brand: rental.brand,
+      model: rental.model,
+      year: rental.year,
+      license_plate: rental.license_plate,
+      images: rental.images || [],
+      rental_start_date: rental.rental_start_date,
+      rental_end_date: rental.rental_end_date,
+      pickup_location: rental.pickup_location,
+      return_location: rental.return_location,
+      daily_rate: rental.daily_rate,
+      total_days: rental.total_days,
+      rental_cost: rental.total_amount,
+      deposit_amount: rental.deposit_amount,
+      platform_fee: rental.platform_fee,
+      total_cost: rental.total_amount
+    };
+  }
+
+  async createContractBySaga(rental) {
+    const response = await axios.post(
+      `${CONTRACT_SERVICE_URL}/api/contracts/internal/create`,
+      this.buildContractPayload(rental),
+      {
+        headers: {
+          'X-Service-Token': SERVICE_TOKEN
+        }
+      }
+    );
+
+    return response?.data?.data || response?.data;
+  }
+
+  async createPaymentBySaga(rental, contract) {
+    const response = await axios.post(`${PAYMENT_SERVICE_URL}/api/payments`, {
+      contract_id: contract._id,
+      renter_id: rental.renter_id,
+      owner_id: rental.owner_id,
+      payment_type: 'RENTAL_FEE',
+      amount: Number(rental.total_amount || 0),
+      payment_method: 'BANK_TRANSFER',
+      notes: `Saga auto-create payment for rental ${rental._id}`
+    });
+
+    return response?.data?.data || response?.data;
+  }
+
+  async processPaymentBySaga(paymentId) {
+    const transactionId = `SAGA-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const response = await axios.put(`${PAYMENT_SERVICE_URL}/api/payments/${paymentId}/process`, {
+      transaction_id: transactionId
+    });
+    return response?.data?.data || response?.data;
+  }
+
+  async failPaymentBySaga(paymentId, reason) {
+    try {
+      await axios.put(`${PAYMENT_SERVICE_URL}/api/payments/${paymentId}/fail`, {
+        reason: reason || 'Saga compensation'
+      });
+    } catch (error) {
+      console.log('Saga compensation fail-payment warning:', error.message);
+    }
+  }
+
+  async cancelContractBySaga(contractId, reason) {
+    try {
+      await axios.patch(
+        `${CONTRACT_SERVICE_URL}/api/contracts/internal/${contractId}/cancel-saga`,
+        {
+          reason: reason || 'Saga compensation'
+        },
+        {
+          headers: {
+            'X-Service-Token': SERVICE_TOKEN
+          }
+        }
+      );
+    } catch (error) {
+      console.log('Saga compensation cancel-contract warning:', error.message);
+    }
+  }
+
+  async runWithRetry(actionName, callback) {
+    let attempt = 0;
+    let lastError = null;
+    while (attempt <= SAGA_MAX_RETRY) {
+      try {
+        return await callback();
+      } catch (error) {
+        lastError = error;
+        attempt += 1;
+        if (attempt > SAGA_MAX_RETRY) break;
+        await delay(SAGA_RETRY_DELAY_MS);
+      }
+    }
+    throw makeError(`${actionName} failed after ${SAGA_MAX_RETRY + 1} attempts: ${lastError?.message || 'Unknown error'}`, 502);
+  }
+
+  async compensateApprovalSaga({ rental, saga, contractId, paymentId, error }) {
+    if (paymentId) {
+      await this.failPaymentBySaga(paymentId, 'Payment compensation due to saga failure');
+    }
+    if (contractId) {
+      await this.cancelContractBySaga(contractId, 'Contract compensation due to saga failure');
+    }
+
+    await this.updateVehicleAvailability(rental.vehicle_id, true);
+
+    const failedStep = this.buildSagaStep('COMPENSATION', 'COMPENSATED', error.message || 'Saga compensation executed');
+    const compensatedSaga = {
+      ...saga,
+      status: 'COMPENSATED',
+      current_step: 'COMPENSATED',
+      contract_id: contractId ? String(contractId) : saga.contract_id || '',
+      payment_id: paymentId ? String(paymentId) : saga.payment_id || '',
+      last_error: error.message || 'Saga failed',
+      steps: [...(saga.steps || []), failedStep]
+    };
+
+    await rentalRepository.update(rental._id, {
+      status: RENTAL_STATUSES.REJECTED,
+      booking_saga: {
+        ...compensatedSaga,
+        updated_at: new Date()
+      }
+    });
+
+    await eventBus.publish('rental_rejected', {
+      rentalId: rental._id,
+      renterId: rental.renter_id,
+      ownerId: rental.owner_id,
+      reason: 'Saga compensation'
+    });
   }
 
   async createRentalRequest(renterId, rentalData) {
@@ -323,34 +491,108 @@ export class RentalService {
       throw makeError('Only pending rentals can be approved', 400);
     }
 
-    const updated = await rentalRepository.update(rentalId, {
-      status: RENTAL_STATUSES.APPROVED
+    const sagaId = crypto.randomUUID();
+    let saga = {
+      saga_id: sagaId,
+      status: 'STARTED',
+      current_step: 'OWNER_APPROVED',
+      contract_id: '',
+      payment_id: '',
+      last_error: '',
+      steps: [this.buildSagaStep('OWNER_APPROVED', 'SUCCESS', 'Owner approved rental request')],
+      updated_at: new Date()
+    };
+
+    let updated = await rentalRepository.update(rentalId, {
+      status: RENTAL_STATUSES.APPROVED,
+      booking_saga: saga
     });
 
-    await this.updateVehicleAvailability(rental.vehicle_id, false);
+    let contractId = '';
+    let paymentId = '';
 
-    await eventBus.publish('rental_confirmed', {
-      rentalId: updated._id,
-      renterId: updated.renter_id,
-      ownerId: updated.owner_id,
-      vehicleId: updated.vehicle_id,
-      rentalStartDate: updated.rental_start_date,
-      rentalEndDate: updated.rental_end_date,
-      pickupLocation: updated.pickup_location,
-      returnLocation: updated.return_location,
-      dailyRate: updated.daily_rate,
-      totalDays: updated.total_days,
-      totalAmount: updated.total_amount,
-      depositAmount: updated.deposit_amount,
-      platformFee: updated.platform_fee,
-      brand: updated.brand,
-      model: updated.model,
-      year: updated.year,
-      license_plate: updated.license_plate,
-      images: updated.images
-    });
+    try {
+      await this.updateVehicleAvailability(rental.vehicle_id, false);
+      saga = await this.updateSagaState(rentalId, saga, {
+        current_step: 'VEHICLE_RESERVED',
+        steps: [...saga.steps, this.buildSagaStep('VEHICLE_RESERVED', 'SUCCESS', 'Vehicle availability set to false')]
+      });
 
-    return updated;
+      const createdContract = await this.runWithRetry('Create contract', () =>
+        this.createContractBySaga(updated)
+      );
+      contractId = createdContract?._id ? String(createdContract._id) : '';
+
+      saga = await this.updateSagaState(rentalId, saga, {
+        current_step: 'CONTRACT_CREATED',
+        contract_id: contractId,
+        steps: [...saga.steps, this.buildSagaStep('CONTRACT_CREATED', 'SUCCESS', `Contract ${contractId} created`)]
+      });
+
+      const createdPayment = await this.runWithRetry('Create payment', () =>
+        this.createPaymentBySaga(updated, createdContract)
+      );
+      paymentId = createdPayment?._id ? String(createdPayment._id) : '';
+
+      saga = await this.updateSagaState(rentalId, saga, {
+        current_step: 'PAYMENT_CREATED',
+        payment_id: paymentId,
+        steps: [...saga.steps, this.buildSagaStep('PAYMENT_CREATED', 'SUCCESS', `Payment ${paymentId} created`)]
+      });
+
+      await this.runWithRetry('Process payment', () => this.processPaymentBySaga(paymentId));
+
+      saga = await this.updateSagaState(rentalId, saga, {
+        current_step: 'PAYMENT_COMPLETED',
+        steps: [...saga.steps, this.buildSagaStep('PAYMENT_COMPLETED', 'SUCCESS', `Payment ${paymentId} completed`)]
+      });
+
+      updated = await rentalRepository.update(rentalId, {
+        status: RENTAL_STATUSES.CONFIRMED,
+        booking_saga: {
+          ...saga,
+          status: 'COMPLETED',
+          current_step: 'SAGA_COMPLETED',
+          steps: [...saga.steps, this.buildSagaStep('SAGA_COMPLETED', 'SUCCESS', 'Booking saga completed')],
+          updated_at: new Date()
+        }
+      });
+
+      await eventBus.publish('rental_confirmed', {
+        rentalId: updated._id,
+        renterId: updated.renter_id,
+        ownerId: updated.owner_id,
+        vehicleId: updated.vehicle_id,
+        rentalStartDate: updated.rental_start_date,
+        rentalEndDate: updated.rental_end_date,
+        pickupLocation: updated.pickup_location,
+        returnLocation: updated.return_location,
+        dailyRate: updated.daily_rate,
+        totalDays: updated.total_days,
+        totalAmount: updated.total_amount,
+        depositAmount: updated.deposit_amount,
+        platformFee: updated.platform_fee,
+        brand: updated.brand,
+        model: updated.model,
+        year: updated.year,
+        license_plate: updated.license_plate,
+        images: updated.images,
+        contractId,
+        paymentId,
+        sagaId
+      });
+
+      return updated;
+    } catch (error) {
+      await this.compensateApprovalSaga({
+        rental: updated || rental,
+        saga,
+        contractId,
+        paymentId,
+        error
+      });
+      throw makeError(`Approve rental saga failed: ${error.message}`, error.status || 502);
+    }
   }
 
   async confirmRental(rentalId, ownerId) {

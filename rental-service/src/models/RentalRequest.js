@@ -129,6 +129,30 @@ const rental_request_schema = new mongoose.Schema(
     return_requested_at: Date,
     completed_at: Date,
     dispute_reason: String,
+    booking_saga: {
+      saga_id: String,
+      status: {
+        type: String,
+        enum: ['NONE', 'STARTED', 'COMPLETED', 'COMPENSATED', 'FAILED'],
+        default: 'NONE'
+      },
+      current_step: String,
+      contract_id: String,
+      payment_id: String,
+      last_error: String,
+      steps: [
+        {
+          step: String,
+          status: String,
+          message: String,
+          at: {
+            type: Date,
+            default: Date.now
+          }
+        }
+      ],
+      updated_at: Date
+    },
     created_at: {
       type: Date,
       default: Date.now

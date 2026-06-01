@@ -21,6 +21,14 @@ export class ContractService {
     return contract;
   }
 
+  async createContractIfNotExists(contractData) {
+    const existing = await contractRepository.findByRentalRequestId(contractData.rental_request_id);
+    if (existing) {
+      return existing;
+    }
+    return this.createContract(contractData);
+  }
+
   async getContractById(contractId) {
     return await contractRepository.findById(contractId);
   }
@@ -175,6 +183,26 @@ export class ContractService {
     return updatedContract;
   }
 
+  async cancelContractBySaga(contractId, reason = '') {
+    const contract = await contractRepository.findById(contractId);
+    if (!contract) {
+      throw new Error('Contract not found');
+    }
+
+    if (contract.status === 'CANCELLED') {
+      return contract;
+    }
+
+    return await contractRepository.update(contractId, {
+      status: 'CANCELLED',
+      cancellation_fee_applied: false,
+      cancellation_fee_amount: 0,
+      refund_amount: Number(contract.deposit_amount || 0),
+      cancellation_reason: reason || 'Saga compensation',
+      cancelled_at: new Date()
+    });
+  }
+
   async getRenterContracts(renterId) {
     return await contractRepository.findByRenterId(renterId);
   }
@@ -204,6 +232,11 @@ export class ContractService {
   async subscribeToEvents() {
     await eventBus.subscribe('rental_confirmed', async (data) => {
       try {
+        const existing = await contractRepository.findByRentalRequestId(data.rentalId);
+        if (existing) {
+          return;
+        }
+
         const contract = await contractRepository.create({
           rental_request_id: data.rentalId,
           renter_id: data.renterId,

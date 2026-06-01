@@ -9,6 +9,12 @@ function isAdmin(req) {
   return String(req.userRole || '').toUpperCase() === 'ADMIN';
 }
 
+function isTrustedService(req) {
+  const token = req.headers['x-service-token'];
+  const expectedToken = process.env.SERVICE_TOKEN || 'internal-service-token';
+  return token && token === expectedToken;
+}
+
 router.get('/admin/list', authenticateToken, async (req, res) => {
   try {
     if (!isAdmin(req)) {
@@ -25,6 +31,41 @@ router.get('/admin/list', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Failed to fetch admin contracts' });
+  }
+});
+
+router.post('/internal/create', async (req, res) => {
+  try {
+    if (!isTrustedService(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const contract = await contractService.createContractIfNotExists(req.body || {});
+    return res.status(201).json({
+      success: true,
+      data: contract
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.patch('/internal/:contractId/cancel-saga', async (req, res) => {
+  try {
+    if (!isTrustedService(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const contract = await contractService.cancelContractBySaga(
+      req.params.contractId,
+      req.body?.reason || 'Saga compensation'
+    );
+    return res.json({
+      success: true,
+      data: contract
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 
