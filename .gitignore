@@ -29,3 +29,4 @@ COMPLETION_SUMMARY.md
 KEY_SETUP.md
 e2e-result.json
 image-service/uploads/
+render-*.env
