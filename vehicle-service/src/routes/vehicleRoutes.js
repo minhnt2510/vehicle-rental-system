@@ -61,6 +61,22 @@ function applySearchFiltersFromQuery(query, includeAvailability = false) {
   return filters;
 }
 
+function parseGeoQuery(query = {}) {
+  const latitude = Number.parseFloat(query.latitude ?? query.lat);
+  const longitude = Number.parseFloat(query.longitude ?? query.lng);
+  const radiusKm = Number.parseFloat(query.radius_km ?? query.radiusKm ?? query.radius);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+    radius_km: Number.isFinite(radiusKm) ? radiusKm : 10
+  };
+}
+
 router.post('/', authenticateToken, upload.fields([{ name: 'images', maxCount: 10 }]), async (req, res) => {
   try {
     const vehicle = await vehicleService.createVehicle(
@@ -97,10 +113,33 @@ router.get('/available/list', async (req, res) => {
     const sort = req.query.sort || '-created_at';
 
     const filters = applySearchFiltersFromQuery(req.query, false);
-    const result = await vehicleService.getAvailableVehicles(filters, page, limit, sort);
+    const geo = parseGeoQuery(req.query);
+    const result = geo
+      ? await vehicleService.getNearbyVehicles(filters, geo, page, limit)
+      : await vehicleService.getAvailableVehicles(filters, page, limit, sort);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/nearby/list', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const filters = applySearchFiltersFromQuery(req.query, false);
+    const geo = parseGeoQuery(req.query);
+
+    if (!geo) {
+      return res.status(400).json({
+        error: 'Missing latitude/longitude. Example: /nearby/list?lat=10.78&lng=106.70&radius_km=10'
+      });
+    }
+
+    const result = await vehicleService.getNearbyVehicles(filters, geo, page, limit);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });
 

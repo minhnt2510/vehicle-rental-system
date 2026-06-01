@@ -1,5 +1,5 @@
 ﻿import React, { useMemo } from 'react';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Crosshair, Search, SlidersHorizontal } from 'lucide-react';
 import {
   FUEL_TYPE_OPTIONS,
   TRANSMISSION_OPTIONS,
@@ -18,7 +18,14 @@ const DRIVER_MODE_OPTIONS = [
   { value: 'WITH_DRIVER', label: 'Có tài xế' }
 ];
 
-export default function FilterPanel({ filters, onChange, onReset, onSubmit }) {
+export default function FilterPanel({
+  filters,
+  onChange,
+  onReset,
+  onSubmit,
+  onFindNearby,
+  locating = false
+}) {
   const districtOptions = useMemo(() => getDistrictOptions(filters.city), [filters.city]);
   const pickupAreaOptions = useMemo(() => getPickupAreaOptions(filters.city), [filters.city]);
 
@@ -46,13 +53,24 @@ export default function FilterPanel({ filters, onChange, onReset, onSubmit }) {
           <SlidersHorizontal className="h-4 w-4 text-cyan-300" />
           <p className="text-sm font-semibold">Bộ lọc phương tiện</p>
         </div>
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-xs text-cyan-300 transition hover:text-cyan-200"
-        >
-          Đặt lại
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onFindNearby}
+            disabled={locating}
+            className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/40 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Crosshair className="h-3.5 w-3.5" />
+            {locating ? 'Đang lấy vị trí...' : 'Tìm gần tôi'}
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-xs text-cyan-300 transition hover:text-cyan-200"
+          >
+            Đặt lại
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -116,6 +134,18 @@ export default function FilterPanel({ filters, onChange, onReset, onSubmit }) {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-300">Bán kính tìm gần (km)</span>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={filters.radius_km || '10'}
+              onChange={(event) => setField('radius_km', event.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none"
+            />
           </label>
         </div>
 

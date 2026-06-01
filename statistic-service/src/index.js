@@ -8,6 +8,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || process.env.STATISTIC_SERVICE_PORT || 3011;
+const mongoUri =
+  process.env.STATISTIC_MONGO_URI ||
+  process.env.MONGO_URI ||
+  process.env.MONGODB_URI;
 
 app.use(express.json());
 
@@ -40,7 +44,7 @@ app.use('/api/statistics', createStatisticsRoutes(redisClient));
 
 const bootstrap = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(mongoUri);
     console.log('Connected to MongoDB');
 
     if (redisClient) {

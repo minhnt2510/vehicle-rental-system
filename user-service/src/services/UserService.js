@@ -28,6 +28,54 @@ export class UserService {
     return process.env.JWT_ALGORITHM || 'RS256';
   }
 
+  buildInternalUserSummary(user = null) {
+    if (!user) return null;
+    const normalizedOwnerStatus = this.normalizeOwnerStatus(user.owner_status);
+    const payout = user.payout_info || {};
+    return {
+      _id: user._id,
+      email: user.email || '',
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      full_name: user.full_name || '',
+      phone: user.phone || '',
+      owner_status: normalizedOwnerStatus,
+      bank_name: user.bank_name || payout.bank_name || '',
+      bank_code: user.bank_code || payout.bank_code || '',
+      bank_account_holder: user.bank_account_holder || payout.bank_account_holder || '',
+      bank_account_number: user.bank_account_number || payout.bank_account_number || '',
+      payout_info: payout,
+      is_active: user.is_active !== false,
+      deleted_at: user.deleted_at || null
+    };
+  }
+
+  async getInternalUserSummary(userId) {
+    if (!mongoose.Types.ObjectId.isValid(String(userId || ''))) {
+      return null;
+    }
+
+    const user = await User.findById(userId).lean();
+    return this.buildInternalUserSummary(user);
+  }
+
+  async getInternalUserSummaries(userIds = []) {
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(userIds) ? userIds : [])
+          .map((item) => String(item || ''))
+          .filter((item) => mongoose.Types.ObjectId.isValid(item))
+      )
+    );
+
+    if (!ids.length) {
+      return [];
+    }
+
+    const rows = await User.find({ _id: { $in: ids } }).lean();
+    return rows.map((row) => this.buildInternalUserSummary(row)).filter(Boolean);
+  }
+
   getPrivateKey() {
     const inlinePrivateKey = process.env.JWT_PRIVATE_KEY;
     if (inlinePrivateKey) {

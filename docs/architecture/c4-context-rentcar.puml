@@ -1,0 +1,39 @@
+@startuml c4-context-rentcar
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+title C4 Context Diagram - RentCar Premium
+
+Person(guest, "Guest", "Explore vehicles and platform information before login.")
+Person(renter, "Renter (USER)", "Create rental requests, pay, track contracts, review after completed trips.")
+Person(owner, "Owner (USER + owner_status APPROVED)", "Manage own vehicles, approve/reject requests, receive payments.")
+Person(admin, "Administrator (ADMIN)", "Moderate users, approve owner applications, monitor platform.")
+
+System_Boundary(rentcar_boundary, "RentCar Premium Platform") {
+  System(rentcar, "RentCar Premium", "Microservices-based P2P vehicle rental platform.")
+}
+
+System_Ext(mongo_atlas, "MongoDB Atlas", "Primary data platform for all service databases.")
+System_Ext(redis_provider, "Redis", "Cache layer for search, statistics and tracking hot data.")
+System_Ext(rabbitmq_provider, "RabbitMQ", "Event bus for async workflows and notifications.")
+System_Ext(payment_gateway, "Payment Gateway", "Bank transfer / card / e-wallet integration.")
+System_Ext(maps_provider, "Google Maps Platform", "Map rendering and geospatial features.")
+System_Ext(object_storage, "AWS S3", "Vehicle and identity image storage.")
+System_Ext(msg_provider, "Notification Provider", "Email/SMS/Push integration.")
+System_Ext(ai_provider, "AI Provider (Gemini/OpenAI)", "AI recommendation and AI assistant.")
+
+Rel(guest, rentcar, "Browse public pages and vehicles", "HTTPS")
+Rel(renter, rentcar, "Rent vehicles and manage renter workflow", "HTTPS/JSON")
+Rel(owner, rentcar, "Manage owner workflow and vehicle operations", "HTTPS/JSON")
+Rel(admin, rentcar, "Operate admin console and governance", "HTTPS/JSON")
+
+Rel(rentcar, mongo_atlas, "Store service data", "MongoDB")
+Rel(rentcar, redis_provider, "Cache and fast read/write", "Redis protocol")
+Rel(rentcar, rabbitmq_provider, "Publish/consume domain events", "AMQP")
+Rel(rentcar, payment_gateway, "Create and verify payments", "REST")
+Rel(rentcar, maps_provider, "Map display and nearby search", "Maps API")
+Rel(rentcar, object_storage, "Upload and retrieve images", "S3 API")
+Rel(rentcar, msg_provider, "Send transactional notifications", "SMTP/REST")
+Rel(rentcar, ai_provider, "AI recommendations and assistant", "REST")
+
+@enduml

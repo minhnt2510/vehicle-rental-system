@@ -16,7 +16,21 @@ export class PaymentService {
     return payment;
   }
 
-  async processPayment(paymentId, transactionId) {
+  async processPayment(paymentId, transactionId, actorId = '', actorRole = '') {
+    const current = await paymentRepository.findById(paymentId);
+    if (!current) {
+      throw new Error('Payment not found');
+    }
+
+    if (String(current.status || '').toUpperCase() === 'COMPLETED') {
+      return current;
+    }
+
+    const isAdmin = String(actorRole || '').toUpperCase() === 'ADMIN';
+    if (!isAdmin && String(current.renter_id) !== String(actorId)) {
+      throw new Error('Not authorized to process this payment');
+    }
+
     const payment = await paymentRepository.update(paymentId, {
       status: 'COMPLETED',
       transaction_id: transactionId

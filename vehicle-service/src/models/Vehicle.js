@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { resolveCoordinates, toGeoPoint } from '../constants/geoLocation.js';
 
 const vehicle_schema = new mongoose.Schema(
   {
@@ -68,6 +69,25 @@ const vehicle_schema = new mongoose.Schema(
     district: {
       type: String,
       default: ''
+    },
+    latitude: {
+      type: Number,
+      default: null
+    },
+    longitude: {
+      type: Number,
+      default: null
+    },
+    geo_location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: undefined
+      },
+      coordinates: {
+        type: [Number],
+        default: undefined
+      }
     },
     is_available: {
       type: Boolean,
@@ -148,6 +168,27 @@ vehicle_schema.index({ brand: 1 });
 vehicle_schema.index({ daily_rate: 1 });
 vehicle_schema.index({ city: 1, district: 1 });
 vehicle_schema.index({ pickup_location: 1 });
+vehicle_schema.index({ geo_location: '2dsphere' });
 vehicle_schema.index({ created_at: -1 });
+
+vehicle_schema.pre('validate', function beforeValidate(next) {
+  const resolved = resolveCoordinates({
+    city: this.city,
+    district: this.district,
+    pickup_location: this.pickup_location,
+    return_location: this.return_location,
+    allowed_region: this.allowed_region,
+    latitude: this.latitude,
+    longitude: this.longitude
+  });
+
+  if (resolved) {
+    this.latitude = resolved.latitude;
+    this.longitude = resolved.longitude;
+    this.geo_location = toGeoPoint(resolved);
+  }
+
+  next();
+});
 
 export default mongoose.model('Vehicle', vehicle_schema);

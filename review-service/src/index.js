@@ -8,10 +8,14 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || process.env.REVIEW_SERVICE_PORT || 3009;
+const mongoUri =
+  process.env.REVIEW_MONGO_URI ||
+  process.env.MONGO_URI ||
+  process.env.MONGODB_URI;
 
 app.use(express.json());
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://admin:password@localhost:27017/redis_vehicle_db?authSource=admin')
+mongoose.connect(mongoUri)
   .then(async () => {
     console.log('Connected to MongoDB');
     try {
@@ -23,6 +27,13 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://admin:password@localhost:
   .catch(err => console.log('MongoDB connection error:', err));
 
 app.use('/api/reviews', reviewRoutes);
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'review-service',
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Review Service running on port ${PORT}`);

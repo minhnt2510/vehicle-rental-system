@@ -203,6 +203,18 @@ export class ContractService {
     });
   }
 
+  async syncStatusByRentalRequest(rentalRequestId, status, extra = {}) {
+    const contract = await contractRepository.findByRentalRequestId(rentalRequestId);
+    if (!contract) {
+      return null;
+    }
+
+    return contractRepository.update(contract._id, {
+      status: String(status || contract.status || '').toUpperCase() || contract.status,
+      ...extra
+    });
+  }
+
   async getRenterContracts(renterId) {
     return await contractRepository.findByRenterId(renterId);
   }

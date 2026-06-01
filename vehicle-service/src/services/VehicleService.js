@@ -4,6 +4,7 @@ import axios from 'axios';
 import FormData from 'form-data';
 import mongoose from 'mongoose';
 import { requestSmartPricing, requestTrustScore } from './aiClient.js';
+import { resolveCoordinates, toGeoPoint } from '../constants/geoLocation.js';
 
 const vehicleRepository = new VehicleRepository();
 const redisClient = createClient({
@@ -15,6 +16,8 @@ const redisClient = createClient({
   },
 });
 const CACHE_TTL_SECONDS = Number.parseInt(process.env.VEHICLE_CACHE_TTL || '120', 10);
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'internal-service-token';
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err.message));
 
@@ -50,12 +53,35 @@ export class VehicleService {
   }
 
   async findOwnersByIds(ownerIds = []) {
-    const objectIds = ownerIds
-      .filter((value) => mongoose.Types.ObjectId.isValid(String(value || '')))
-      .map((value) => new mongoose.Types.ObjectId(value));
-    if (!objectIds.length) return [];
+    const normalizedIds = Array.from(
+      new Set(
+        ownerIds
+          .map((value) => String(value || ''))
+          .filter((value) => mongoose.Types.ObjectId.isValid(value))
+      )
+    );
+    if (!normalizedIds.length) return [];
 
-    return await mongoose.connection
+    try {
+      const response = await axios.post(
+        `${USER_SERVICE_URL}/api/users/internal/summaries`,
+        { ids: normalizedIds },
+        {
+          headers: {
+            'X-Service-Token': SERVICE_TOKEN
+          }
+        }
+      );
+      const rows = response?.data?.data;
+      if (Array.isArray(rows)) {
+        return rows;
+      }
+    } catch (error) {
+      console.log('Fetch owners via user-service failed, fallback to local query:', error.message);
+    }
+
+    const objectIds = normalizedIds.map((value) => new mongoose.Types.ObjectId(value));
+    return mongoose.connection
       .collection('users')
       .find(
         { _id: { $in: objectIds } },
@@ -93,6 +119,14 @@ export class VehicleService {
     if (next.vehicle_type) {
       next.vehicle_type = this.normalizeVehicleType(next.vehicle_type);
     }
+
+    const resolved = resolveCoordinates(next);
+    if (resolved) {
+      next.latitude = resolved.latitude;
+      next.longitude = resolved.longitude;
+      next.geo_location = toGeoPoint(resolved);
+    }
+
     return next;
   }
 
@@ -328,6 +362,31 @@ export class VehicleService {
       ? await vehicleRepository.searchVehicles(cleanFilters, keyword, page, limit, sort)
       : await vehicleRepository.findAll(cleanFilters, page, limit, sort);
 
+    await this.setCache(cacheKey, result);
+    return result;
+  }
+
+  async getNearbyVehicles(filters = {}, geo = {}, page = 1, limit = 10) {
+    const cleanFilters = this.normalizeVehiclePayload({ ...filters });
+    delete cleanFilters.keyword;
+
+    const cacheKey = this.buildListCacheKey('vehicles:list:nearby', {
+      filters: cleanFilters,
+      geo: {
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        radius_km: geo.radius_km ?? geo.radiusKm ?? 10
+      },
+      page,
+      limit
+    });
+
+    const cached = await this.getFromCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const result = await vehicleRepository.findNearbyAvailable(cleanFilters, geo, page, limit);
     await this.setCache(cacheKey, result);
     return result;
   }

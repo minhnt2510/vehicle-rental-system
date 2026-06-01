@@ -5,6 +5,7 @@ import DataTable from '../../components/common/DataTable';
 import EmptyState from '../../components/common/EmptyState';
 import SectionHeader from '../../components/common/SectionHeader';
 import StatusBadge from '../../components/common/StatusBadge';
+import { useToast } from '../../context/ToastContext';
 import {
   compactId,
   formatCurrency,
@@ -56,9 +57,11 @@ function derivePaymentRowsFromRentals(rentals = []) {
 }
 
 export default function PaymentsPage() {
+  const { pushToast } = useToast();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [processingPaymentId, setProcessingPaymentId] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -92,6 +95,43 @@ export default function PaymentsPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleProcessPayment = async (row) => {
+    const paymentId = String(row?._id || row?.id || '');
+    if (!paymentId || String(row?.source || '') === 'RENTAL_FALLBACK') {
+      pushToast({
+        tone: 'info',
+        title: 'Chưa thể thanh toán trực tiếp',
+        message:
+          'Bill này đang ở chế độ dự phòng. Vui lòng nhờ chủ xe duyệt lại để tạo giao dịch thanh toán chính thức.'
+      });
+      return;
+    }
+
+    setProcessingPaymentId(paymentId);
+    try {
+      await paymentApi.process(paymentId, {
+        transaction_id: `CLIENT-${Date.now()}`
+      });
+      pushToast({
+        tone: 'success',
+        title: 'Thanh toán thành công',
+        message: 'Giao dịch của bạn đã được ghi nhận.'
+      });
+      await loadData();
+    } catch (error) {
+      pushToast({
+        tone: 'error',
+        title: 'Thanh toán thất bại',
+        message:
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          'Không thể xử lý thanh toán lúc này.'
+      });
+    } finally {
+      setProcessingPaymentId('');
+    }
+  };
 
   const totalAmount = useMemo(
     () => payments.reduce((sum, row) => sum + Number(row?.amount || 0), 0),
@@ -143,6 +183,35 @@ export default function PaymentsPage() {
       key: 'created',
       title: 'Thời gian tạo',
       render: (row) => formatDateTime(row.created_at)
+    },
+    {
+      key: 'action',
+      title: 'Thao tác',
+      render: (row) => {
+        const status = String(row?.status || '').toUpperCase();
+        const paymentId = String(row?._id || row?.id || '');
+        const isFallback = String(row?.source || '') === 'RENTAL_FALLBACK';
+        const isProcessing = processingPaymentId === paymentId;
+
+        if (status !== 'PENDING') {
+          return <span className="text-xs text-slate-400">--</span>;
+        }
+
+        return (
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={() => handleProcessPayment(row)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              isFallback
+                ? 'border border-amber-300/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
+                : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {isFallback ? 'Bill tạm' : isProcessing ? 'Đang xử lý...' : 'Thanh toán ngay'}
+          </button>
+        );
+      }
     }
   ];
 

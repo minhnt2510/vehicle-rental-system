@@ -1,0 +1,11 @@
+{
+  "name": "vehicle-rental-system-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate:atlas:split": "node scripts/migrate-atlas-shared-to-service-dbs.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.18.0"
+  }
+}

@@ -1,0 +1,121 @@
+@startuml system-architecture-overview
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Segoe UI
+skinparam ArrowColor #4fd1c5
+skinparam package {
+  BackgroundColor #0f172a
+  BorderColor #38bdf8
+  FontColor #e2e8f0
+}
+skinparam component {
+  BackgroundColor #1e293b
+  BorderColor #60a5fa
+  FontColor #f8fafc
+}
+skinparam actor {
+  BorderColor #22d3ee
+  FontColor #f8fafc
+}
+
+title RentCar Premium - System Architecture Overview (Aligned With Current Code)
+
+actor "Guest/Renter" as renter
+actor "Vehicle Owner" as owner
+actor "Admin" as admin
+
+package "Frontend Layer" {
+  component "Web App (React + Vite)\n- Public Portal\n- Renter Portal\n- Owner Portal\n- Admin Portal" as web
+}
+
+package "Edge Layer" {
+  component "API Gateway (Node.js)\nAuth + CORS + Routing + Aggregation\nGET /health, /api/*" as gateway
+}
+
+package "Domain Services Layer" {
+  component "user-service" as user_service
+  component "vehicle-service" as vehicle_service
+  component "rental-service" as rental_service
+  component "contract-service" as contract_service
+  component "payment-service" as payment_service
+  component "tracking-service" as tracking_service
+  component "dispute-service" as dispute_service
+  component "review-service" as review_service
+  component "notification-service" as notification_service
+  component "statistic-service" as statistic_service
+  component "image-service" as image_service
+  component "ai-service" as ai_service
+  component "ai-agent-service" as ai_agent_service
+}
+
+package "Data & Messaging Layer" {
+  database "MongoDB Atlas\nrentcar_user_db\nrentcar_vehicle_db\nrentcar_rental_db\nrentcar_contract_db\nrentcar_payment_db\nrentcar_tracking_db\nrentcar_dispute_db\nrentcar_review_db\nrentcar_notification_db\nrentcar_statistic_db\nrentcar_image_db" as mongo
+  database "Redis Cache" as redis
+  queue "RabbitMQ Event Bus" as rabbit
+}
+
+package "External Integrations" {
+  component "AWS S3" as s3
+  component "Google Maps API" as maps
+  component "Payment Gateway" as ext_payment
+  component "Gemini/OpenAI" as ext_ai
+}
+
+package "Deployment (Current Setup)" {
+  component "Render\nBackend services + API Gateway" as render
+  component "Cloudflare Pages\nFrontend hosting" as cf
+}
+
+renter --> web
+owner --> web
+admin --> web
+web --> gateway
+cf --> web
+render --> gateway
+
+gateway --> user_service
+gateway --> vehicle_service
+gateway --> rental_service
+gateway --> contract_service
+gateway --> payment_service
+gateway --> tracking_service
+gateway --> dispute_service
+gateway --> review_service
+gateway --> notification_service
+gateway --> statistic_service
+gateway --> image_service
+gateway --> ai_service
+gateway --> ai_agent_service
+
+user_service --> mongo
+vehicle_service --> mongo
+rental_service --> mongo
+contract_service --> mongo
+payment_service --> mongo
+tracking_service --> mongo
+dispute_service --> mongo
+review_service --> mongo
+notification_service --> mongo
+statistic_service --> mongo
+
+vehicle_service --> redis
+tracking_service --> redis
+statistic_service --> redis
+
+rental_service --> rabbit
+contract_service --> rabbit
+payment_service --> rabbit
+tracking_service --> rabbit
+dispute_service --> rabbit
+notification_service --> rabbit
+
+image_service --> s3
+vehicle_service --> maps
+tracking_service --> maps
+payment_service --> ext_payment
+ai_service --> ext_ai
+ai_agent_service --> ext_ai
+
+@enduml

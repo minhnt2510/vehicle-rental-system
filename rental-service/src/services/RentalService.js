@@ -8,6 +8,7 @@ const rentalRepository = new RentalRepository();
 const eventBus = new EventBus();
 const CONTRACT_SERVICE_URL = process.env.CONTRACT_SERVICE_URL || 'http://localhost:3004';
 const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL || 'http://localhost:3005';
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'internal-service-token';
 const SAGA_MAX_RETRY = Number.parseInt(process.env.SAGA_MAX_RETRY || '2', 10);
 const SAGA_RETRY_DELAY_MS = Number.parseInt(process.env.SAGA_RETRY_DELAY_MS || '3000', 10);
@@ -121,6 +122,21 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export class RentalService {
   async fetchUserProfile(userId) {
     try {
+      const response = await axios.get(
+        `${USER_SERVICE_URL}/api/users/internal/summary/${userId}`,
+        {
+          headers: {
+            'X-Service-Token': SERVICE_TOKEN
+          }
+        }
+      );
+      const user = response?.data?.data || null;
+      if (user) return user;
+    } catch (error) {
+      console.log('Fetch user via user-service failed, fallback to local query:', error.message);
+    }
+
+    try {
       const user = await mongoose.connection.collection('users').findOne(
         { _id: toObjectId(userId) },
         {
@@ -171,6 +187,21 @@ export class RentalService {
   }
 
   async syncContractStatusByRental(rentalId, status, extra = {}) {
+    try {
+      await axios.patch(
+        `${CONTRACT_SERVICE_URL}/api/contracts/internal/rental/${rentalId}/status`,
+        { status, ...extra },
+        {
+          headers: {
+            'X-Service-Token': SERVICE_TOKEN
+          }
+        }
+      );
+      return;
+    } catch (error) {
+      console.log('Sync contract via contract-service failed, fallback to local query:', error.message);
+    }
+
     try {
       await mongoose.connection.collection('contracts').updateOne(
         { rental_request_id: toObjectId(rentalId) },
@@ -302,6 +333,27 @@ export class RentalService {
       }
     }
     throw makeError(`${actionName} failed after ${SAGA_MAX_RETRY + 1} attempts: ${lastError?.message || 'Unknown error'}`, 502);
+  }
+
+  async getPaymentStatus(paymentId) {
+    if (!paymentId) return null;
+    try {
+      const response = await axios.get(`${PAYMENT_SERVICE_URL}/api/payments/${paymentId}`);
+      const payment = response?.data?.data || response?.data || null;
+      return upper(payment?.status);
+    } catch (error) {
+      console.log('Fetch payment via payment-service failed, fallback to local query:', error.message);
+    }
+
+    try {
+      const payment = await mongoose.connection.collection('payments').findOne(
+        { _id: toObjectId(paymentId) },
+        { projection: { status: 1 } }
+      );
+      return upper(payment?.status);
+    } catch {
+      return null;
+    }
   }
 
   async compensateApprovalSaga({ rental, saga, contractId, paymentId, error }) {
@@ -540,20 +592,20 @@ export class RentalService {
         steps: [...saga.steps, this.buildSagaStep('PAYMENT_CREATED', 'SUCCESS', `Payment ${paymentId} created`)]
       });
 
-      await this.runWithRetry('Process payment', () => this.processPaymentBySaga(paymentId));
-
-      saga = await this.updateSagaState(rentalId, saga, {
-        current_step: 'PAYMENT_COMPLETED',
-        steps: [...saga.steps, this.buildSagaStep('PAYMENT_COMPLETED', 'SUCCESS', `Payment ${paymentId} completed`)]
-      });
-
       updated = await rentalRepository.update(rentalId, {
-        status: RENTAL_STATUSES.CONFIRMED,
+        status: RENTAL_STATUSES.APPROVED,
         booking_saga: {
           ...saga,
           status: 'COMPLETED',
-          current_step: 'SAGA_COMPLETED',
-          steps: [...saga.steps, this.buildSagaStep('SAGA_COMPLETED', 'SUCCESS', 'Booking saga completed')],
+          current_step: 'PAYMENT_PENDING',
+          steps: [
+            ...saga.steps,
+            this.buildSagaStep(
+              'PAYMENT_PENDING',
+              'WAITING',
+              'Payment created and waiting for renter confirmation'
+            )
+          ],
           updated_at: new Date()
         }
       });
@@ -642,6 +694,11 @@ export class RentalService {
     const currentStatus = upper(rental.status);
     if (![RENTAL_STATUSES.APPROVED, RENTAL_STATUSES.CONFIRMED].includes(currentStatus)) {
       throw makeError('Only approved rentals can be marked as active', 400);
+    }
+
+    const paymentStatus = await this.getPaymentStatus(rental?.booking_saga?.payment_id);
+    if (rental?.booking_saga?.payment_id && paymentStatus !== 'COMPLETED') {
+      throw makeError('Please complete payment before confirming vehicle pickup', 400);
     }
 
     const updated = await rentalRepository.update(rentalId, {

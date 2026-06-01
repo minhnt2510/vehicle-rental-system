@@ -7,17 +7,12 @@ services:
     volumes:
       - ./user-service:/app
       - user_service_node_modules:/app/node_modules
+    env_file:
+      - ./user-service/.env
     environment:
-      USER_SERVICE_PORT: 3001
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
+      SERVICE_TOKEN: internal-service-token
       IMAGE_SERVICE_URL: http://image-service:3007
-      JWT_EXPIRES_IN: 24h
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_PRIVATE_KEY_PATH: ./keys/private.key
-      JWT_ALGORITHM: RS256
-    depends_on:
-      mongodb:
-        condition: service_healthy
+      JWT_EXPIRES_IN: 7d
     networks:
       - app-network
 
@@ -29,18 +24,15 @@ services:
     volumes:
       - ./vehicle-service:/app
       - vehicle_service_node_modules:/app/node_modules
+    env_file:
+      - ./vehicle-service/.env
     environment:
-      VEHICLE_SERVICE_PORT: 3002
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       REDIS_URL: redis://:password@redis:6379
       IMAGE_SERVICE_URL: http://image-service:3007
+      USER_SERVICE_URL: http://user-service:3001
       SERVICE_TOKEN: internal-service-token
       AI_SERVICE_URL: http://ai-service:5010
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       redis:
         condition: service_healthy
       image-service:
@@ -56,16 +48,18 @@ services:
     volumes:
       - ./rental-service:/app
       - rental_service_node_modules:/app/node_modules
+    env_file:
+      - ./rental-service/.env
     environment:
-      RENTAL_SERVICE_PORT: 3003
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
       VEHICLE_SERVICE_URL: http://vehicle-service:3002
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
+      USER_SERVICE_URL: http://user-service:3001
+      CONTRACT_SERVICE_URL: http://contract-service:3004
+      PAYMENT_SERVICE_URL: http://payment-service:3005
+      SERVICE_TOKEN: internal-service-token
+      SAGA_MAX_RETRY: 2
+      SAGA_RETRY_DELAY_MS: 3000
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       vehicle-service:
@@ -81,16 +75,13 @@ services:
     volumes:
       - ./contract-service:/app
       - contract_service_node_modules:/app/node_modules
+    env_file:
+      - ./contract-service/.env
     environment:
-      CONTRACT_SERVICE_PORT: 3004
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
       IMAGE_SERVICE_URL: http://image-service:3007
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
+      SERVICE_TOKEN: internal-service-token
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       image-service:
@@ -106,15 +97,11 @@ services:
     volumes:
       - ./payment-service:/app
       - payment_service_node_modules:/app/node_modules
+    env_file:
+      - ./payment-service/.env
     environment:
-      PAYMENT_SERVICE_PORT: 3005
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
@@ -128,15 +115,11 @@ services:
     volumes:
       - ./tracking-service:/app
       - tracking_service_node_modules:/app/node_modules
+    env_file:
+      - ./tracking-service/.env
     environment:
-      TRACKING_SERVICE_PORT: 3006
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
@@ -152,19 +135,15 @@ services:
     volumes:
       - ./image-service:/app
       - image_service_node_modules:/app/node_modules
+    env_file:
+      - ./image-service/.env
     environment:
-      IMAGE_SERVICE_PORT: 3007
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${AWS_REGION:-ap-southeast-2}
       AWS_BUCKET_NAME: ${AWS_BUCKET_NAME:-local-dev-bucket}
       USE_LOCAL_IMAGE_STORAGE: ${USE_LOCAL_IMAGE_STORAGE:-true}
       SERVICE_TOKEN: internal-service-token
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
-    depends_on:
-      mongodb:
-        condition: service_healthy
     networks:
       - app-network
 
@@ -176,16 +155,12 @@ services:
     volumes:
       - ./dispute-service:/app
       - dispute_service_node_modules:/app/node_modules
+    env_file:
+      - ./dispute-service/.env
     environment:
-      DISPUTE_SERVICE_PORT: 3008
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
       CONTRACT_SERVICE_URL: http://contract-service:3004
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       contract-service:
@@ -201,14 +176,8 @@ services:
     volumes:
       - ./review-service:/app
       - review_service_node_modules:/app/node_modules
-    environment:
-      REVIEW_SERVICE_PORT: 3009
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
-    depends_on:
-      mongodb:
-        condition: service_healthy
+    env_file:
+      - ./review-service/.env
     networks:
       - app-network
 
@@ -220,15 +189,11 @@ services:
     volumes:
       - ./notification-service:/app
       - notification_service_node_modules:/app/node_modules
+    env_file:
+      - ./notification-service/.env
     environment:
-      NOTIFICATION_SERVICE_PORT: 3010
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       RABBITMQ_URI: amqp://admin:password@rabbitmq:5672
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
@@ -242,15 +207,11 @@ services:
     volumes:
       - ./statistic-service:/app
       - statistic_service_node_modules:/app/node_modules
+    env_file:
+      - ./statistic-service/.env
     environment:
-      STATISTIC_SERVICE_PORT: 3011
-      MONGODB_URI: ${MONGODB_URI:-mongodb://admin:password@mongodb:27017/rental_vehicle_db?authSource=admin}
       REDIS_URL: redis://:password@redis:6379
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
     depends_on:
-      mongodb:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -320,8 +281,9 @@ services:
     volumes:
       - ./api-gateway:/app
       - api_gateway_node_modules:/app/node_modules
+    env_file:
+      - ./api-gateway/.env
     environment:
-      API_GATEWAY_PORT: 8000
       USER_SERVICE_URL: http://user-service:3001
       VEHICLE_SERVICE_URL: http://vehicle-service:3002
       RENTAL_SERVICE_URL: http://rental-service:3003
@@ -334,8 +296,6 @@ services:
       STATISTIC_SERVICE_URL: http://statistic-service:3011
       AI_SERVICE_URL: http://ai-service:5010
       AI_AGENT_SERVICE_URL: http://ai-agent-service:5011
-      JWT_PUBLIC_KEY_PATH: ./keys/public.key
-      JWT_ALGORITHM: RS256
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
     depends_on:
       user-service:
@@ -375,6 +335,8 @@ services:
     volumes:
       - ./web:/app
       - web_node_modules:/app/node_modules
+    env_file:
+      - ./web/.env
     environment:
       VITE_API_BASE_URL: http://localhost:8000
     depends_on:

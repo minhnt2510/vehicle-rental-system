@@ -21,6 +21,9 @@ const defaultFilters = {
   city: "",
   district: "",
   pickup_area: "",
+  latitude: "",
+  longitude: "",
+  radius_km: "10",
   vehicle_type: "",
   fuel_type: "",
   transmission: "",
@@ -113,6 +116,7 @@ export default function CarsPage({ detailBase = "/vehicles" }) {
   const [allVehicles, setAllVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     const incoming = { ...defaultFilters };
@@ -139,6 +143,9 @@ export default function CarsPage({ detailBase = "/vehicles" }) {
           nextFilters.fuel_type ||
           (selectedVehicleType === "ELECTRIC" ? "ELECTRIC" : undefined),
         location: location || undefined,
+        latitude: nextFilters.latitude || undefined,
+        longitude: nextFilters.longitude || undefined,
+        radius_km: nextFilters.radius_km || undefined,
         page: 1,
         limit: 60,
         availability_date: nextFilters.start_date || undefined,
@@ -213,6 +220,35 @@ export default function CarsPage({ detailBase = "/vehicles" }) {
     fetchVehicles(defaultFilters);
   };
 
+  const handleFindNearby = () => {
+    if (!navigator.geolocation) {
+      setError("Trình duyệt hiện tại không hỗ trợ định vị.");
+      return;
+    }
+
+    setLocating(true);
+    setError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextFilters = {
+          ...filters,
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+          radius_km: filters.radius_km || "10",
+        };
+        setFilters(nextFilters);
+        applyFiltersImmediately(nextFilters);
+        setLocating(false);
+      },
+      () => {
+        setError("Không thể lấy vị trí hiện tại. Vui lòng cho phép quyền định vị.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  };
+
   const onSelectCategory = (type) => {
     const nextType = normalizeVehicleTypeValue(type);
     const nextFilters = {
@@ -265,6 +301,8 @@ export default function CarsPage({ detailBase = "/vehicles" }) {
           onChange={setFilters}
           onReset={handleReset}
           onSubmit={handleApply}
+          onFindNearby={handleFindNearby}
+          locating={locating}
         />
 
         <section className="space-y-4">

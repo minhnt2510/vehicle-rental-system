@@ -9,7 +9,8 @@ app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({
-    message: 'Tracking Service is running'
+    status: 'ok',
+    service: 'tracking-service'
   });
 });
 

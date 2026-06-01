@@ -69,6 +69,45 @@ router.patch('/internal/:contractId/cancel-saga', async (req, res) => {
   }
 });
 
+router.patch('/internal/rental/:rentalId/status', async (req, res) => {
+  try {
+    if (!isTrustedService(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const contract = await contractService.syncStatusByRentalRequest(
+      req.params.rentalId,
+      req.body?.status,
+      req.body || {}
+    );
+
+    return res.json({
+      success: true,
+      data: contract
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/renter/my-contracts', authenticateToken, async (req, res) => {
+  try {
+    const contracts = await contractService.getRenterContracts(req.userId);
+    res.json(contracts);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/owner/my-contracts', authenticateToken, async (req, res) => {
+  try {
+    const contracts = await contractService.getOwnerContracts(req.userId);
+    res.json(contracts);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 router.get('/:contractId', authenticateToken, async (req, res) => {
   try {
     const contract = await contractService.getContractById(req.params.contractId);
@@ -105,24 +144,6 @@ router.put('/:contractId/cancel', authenticateToken, async (req, res) => {
       req.body
     );
     res.json(contract);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-router.get('/renter/my-contracts', authenticateToken, async (req, res) => {
-  try {
-    const contracts = await contractService.getRenterContracts(req.userId);
-    res.json(contracts);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-router.get('/owner/my-contracts', authenticateToken, async (req, res) => {
-  try {
-    const contracts = await contractService.getOwnerContracts(req.userId);
-    res.json(contracts);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

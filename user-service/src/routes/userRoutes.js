@@ -9,6 +9,12 @@ function isAdmin(req) {
   return String(req.userRole || '').toUpperCase() === 'ADMIN';
 }
 
+function isTrustedService(req) {
+  const token = req.headers['x-service-token'];
+  const expected = process.env.SERVICE_TOKEN || 'internal-service-token';
+  return Boolean(token && token === expected);
+}
+
 router.post('/register', async (req, res) => {
   try {
     const result = await userService.register(req.body);
@@ -42,6 +48,39 @@ router.get('/', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Failed to fetch users' });
+  }
+});
+
+router.get('/internal/summary/:userId', async (req, res) => {
+  try {
+    if (!isTrustedService(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const data = await userService.getInternalUserSummary(req.params.userId);
+    return res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch user summary' });
+  }
+});
+
+router.post('/internal/summaries', async (req, res) => {
+  try {
+    if (!isTrustedService(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const ids = req.body?.ids || [];
+    const data = await userService.getInternalUserSummaries(ids);
+    return res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Failed to fetch user summaries' });
   }
 });
 

@@ -1,0 +1,97 @@
+@startuml c4-container-rentcar
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+LAYOUT_WITH_LEGEND()
+title C4 Container Diagram - RentCar Premium
+
+Person(renter, "Renter")
+Person(owner, "Vehicle Owner")
+Person(admin, "Administrator")
+
+System_Ext(payment_gateway, "Payment Gateway", "External payment provider")
+System_Ext(maps_provider, "Maps Provider", "Google Maps / geocoding")
+System_Ext(s3, "AWS S3", "Image/object storage")
+System_Ext(ai_provider, "AI Provider", "Gemini / OpenAI")
+
+System_Boundary(rentcar_boundary, "RentCar Premium") {
+  Container(web_app, "web", "React + Vite + Tailwind", "Public, Renter, Owner, Admin portals")
+  Container(api_gateway, "api-gateway", "Node.js + Express", "Auth, CORS, routing, aggregation\n/health, /api/*")
+
+  Container(user_service, "user-service", "Node.js + MongoDB", "Auth, users, owner applications")
+  Container(vehicle_service, "vehicle-service", "Node.js + MongoDB + Redis", "Vehicles, geosearch, availability")
+  Container(rental_service, "rental-service", "Node.js + MongoDB + RabbitMQ", "Rental lifecycle, approval, return flow, saga")
+  Container(contract_service, "contract-service", "Node.js + MongoDB + RabbitMQ", "Contracts and contract status sync")
+  Container(payment_service, "payment-service", "Node.js + MongoDB + RabbitMQ", "Payment lifecycle, fees, owner payouts")
+  Container(tracking_service, "tracking-service", "Node.js + MongoDB + Redis + RabbitMQ", "Location, movement history, boundary alerts")
+  Container(dispute_service, "dispute-service", "Node.js + MongoDB + RabbitMQ", "Dispute creation and resolution")
+  Container(review_service, "review-service", "Node.js + MongoDB", "Reviews after COMPLETED rentals")
+  Container(notification_service, "notification-service", "Node.js + MongoDB + RabbitMQ", "Async notifications")
+  Container(statistic_service, "statistic-service", "Node.js + MongoDB + Redis", "Admin KPI and reporting")
+  Container(image_service, "image-service", "Node.js", "Upload/delete image files on S3")
+  Container(ai_service, "ai-service", "Node.js", "AI recommendation and analysis API")
+  Container(ai_agent_service, "ai-agent-service", "Node.js", "AI booking assistant / chat agent")
+
+  ContainerDb(
+    mongodb,
+    "MongoDB Atlas",
+    "Document DB",
+    "rentcar_user_db, rentcar_vehicle_db, rentcar_rental_db,\nrentcar_contract_db, rentcar_payment_db, rentcar_tracking_db,\nrentcar_dispute_db, rentcar_review_db, rentcar_notification_db,\nrentcar_statistic_db, rentcar_image_db"
+  )
+  ContainerDb(redis, "Redis", "In-memory cache", "Cache and hot data")
+  ContainerQueue(rabbitmq, "RabbitMQ", "Message broker", "Async event bus")
+}
+
+Rel(renter, web_app, "Uses renter flows", "HTTPS")
+Rel(owner, web_app, "Uses owner flows", "HTTPS")
+Rel(admin, web_app, "Uses admin flows", "HTTPS")
+Rel(web_app, api_gateway, "REST calls", "HTTPS/JSON")
+
+Rel(api_gateway, user_service, "User and owner application APIs", "HTTP")
+Rel(api_gateway, vehicle_service, "Vehicle listing/search APIs", "HTTP")
+Rel(api_gateway, rental_service, "Rental request/status APIs", "HTTP")
+Rel(api_gateway, contract_service, "Contract APIs", "HTTP")
+Rel(api_gateway, payment_service, "Payment APIs", "HTTP")
+Rel(api_gateway, tracking_service, "Tracking APIs", "HTTP")
+Rel(api_gateway, dispute_service, "Dispute APIs", "HTTP")
+Rel(api_gateway, review_service, "Review APIs", "HTTP")
+Rel(api_gateway, notification_service, "Notification APIs", "HTTP")
+Rel(api_gateway, statistic_service, "Statistic/admin dashboard APIs", "HTTP")
+Rel(api_gateway, image_service, "Image APIs", "HTTP")
+Rel(api_gateway, ai_service, "AI recommendation API", "HTTP")
+Rel(api_gateway, ai_agent_service, "AI assistant API", "HTTP")
+
+Rel(user_service, mongodb, "Read/write")
+Rel(vehicle_service, mongodb, "Read/write")
+Rel(rental_service, mongodb, "Read/write")
+Rel(contract_service, mongodb, "Read/write")
+Rel(payment_service, mongodb, "Read/write")
+Rel(tracking_service, mongodb, "Read/write")
+Rel(dispute_service, mongodb, "Read/write")
+Rel(review_service, mongodb, "Read/write")
+Rel(notification_service, mongodb, "Read/write")
+Rel(statistic_service, mongodb, "Read/aggregate")
+
+Rel(vehicle_service, redis, "Vehicle cache")
+Rel(tracking_service, redis, "Latest location cache")
+Rel(statistic_service, redis, "KPI cache")
+
+Rel(rental_service, rabbitmq, "Publishes rental events and saga events")
+Rel(contract_service, rabbitmq, "Publishes contract events")
+Rel(payment_service, rabbitmq, "Publishes payment events")
+Rel(dispute_service, rabbitmq, "Publishes dispute events")
+Rel(tracking_service, rabbitmq, "Publishes tracking events")
+Rel(notification_service, rabbitmq, "Consumes events")
+
+Rel(image_service, s3, "Store/retrieve images", "S3 API")
+Rel(payment_service, payment_gateway, "Payment integration", "REST")
+Rel(vehicle_service, maps_provider, "Geospatial support", "REST")
+Rel(ai_service, ai_provider, "Inference", "REST")
+Rel(ai_agent_service, ai_provider, "Inference", "REST")
+
+Rel(rental_service, vehicle_service, "Fetch vehicle snapshot and owner", "Internal HTTP")
+Rel(rental_service, user_service, "Fetch renter/owner summary", "Internal HTTP")
+Rel(rental_service, contract_service, "Create/sync contract", "Internal HTTP")
+Rel(rental_service, payment_service, "Create/check payment", "Internal HTTP")
+
+@enduml

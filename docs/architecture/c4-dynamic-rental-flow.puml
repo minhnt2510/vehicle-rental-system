@@ -1,0 +1,62 @@
+@startuml c4-dynamic-rental-flow
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Dynamic.puml
+
+LAYOUT_LEFT_RIGHT()
+LAYOUT_WITH_LEGEND()
+title C4 Dynamic Diagram - Rental Lifecycle + Payment/Saga
+
+Person(renter, "Renter")
+Person(owner, "Vehicle Owner")
+Person(admin, "Administrator")
+
+Container(web_app, "Web App", "React")
+Container(api_gateway, "API Gateway", "Node.js")
+Container(rental_service, "rental-service", "Node.js")
+Container(vehicle_service, "vehicle-service", "Node.js")
+Container(contract_service, "contract-service", "Node.js")
+Container(payment_service, "payment-service", "Node.js")
+Container(notification_service, "notification-service", "Node.js")
+Container(dispute_service, "dispute-service", "Node.js")
+
+RelIndex(1, renter, web_app, "Chooses vehicle and submits request")
+RelIndex(2, web_app, api_gateway, "POST /api/rentals/request")
+RelIndex(3, api_gateway, rental_service, "Authorize USER and forward")
+RelIndex(4, rental_service, vehicle_service, "Fetch vehicle snapshot + owner_id")
+RelIndex(5, rental_service, rental_service, "Block self-rent if renter_id == owner_id")
+RelIndex(6, rental_service, api_gateway, "Create rental status=PENDING")
+RelIndex(7, api_gateway, web_app, "Return request id + status")
+
+RelIndex(8, owner, web_app, "Reviews owner requests")
+RelIndex(9, web_app, api_gateway, "PATCH /api/rentals/:id/approve")
+RelIndex(10, api_gateway, rental_service, "Owner approval")
+RelIndex(11, rental_service, contract_service, "Create contract (status ACTIVE)")
+RelIndex(12, rental_service, payment_service, "Create payment (status PENDING)")
+RelIndex(13, rental_service, notification_service, "Publish approval event")
+RelIndex(14, rental_service, rental_service, "Set vehicle.is_available = false")
+
+RelIndex(15, renter, web_app, "Pays rental bill")
+RelIndex(16, web_app, api_gateway, "PUT /api/payments/:id/process")
+RelIndex(17, api_gateway, payment_service, "Mark payment COMPLETED")
+RelIndex(18, renter, web_app, "Confirm pickup")
+RelIndex(19, web_app, api_gateway, "PATCH /api/rentals/:id/confirm-pickup")
+RelIndex(20, api_gateway, rental_service, "Set rental ACTIVE")
+
+RelIndex(21, renter, web_app, "Clicks 'I returned vehicle'")
+RelIndex(22, web_app, api_gateway, "PATCH /api/rentals/:id/return")
+RelIndex(23, api_gateway, rental_service, "Set RETURN_REQUESTED")
+RelIndex(24, owner, web_app, "Confirms returned vehicle")
+RelIndex(25, web_app, api_gateway, "PATCH /api/rentals/:id/confirm-return")
+RelIndex(26, api_gateway, rental_service, "Set COMPLETED + vehicle available=true")
+RelIndex(27, rental_service, contract_service, "Sync contract status COMPLETED")
+
+RelIndex(28, renter, web_app, "Submits review after COMPLETED")
+RelIndex(29, owner, web_app, "Submits renter review after COMPLETED")
+RelIndex(30, owner, web_app, "Optional: open dispute if return issue exists")
+RelIndex(31, web_app, api_gateway, "PATCH /api/rentals/:id/dispute")
+RelIndex(32, api_gateway, dispute_service, "Create/track dispute")
+RelIndex(33, admin, web_app, "Monitors disputes and operations")
+
+RelIndex(34, rental_service, contract_service, "If downstream fail: saga compensation")
+RelIndex(35, rental_service, payment_service, "Compensate payment state if needed")
+
+@enduml

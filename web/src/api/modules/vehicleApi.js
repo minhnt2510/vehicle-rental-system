@@ -4,6 +4,9 @@ export const vehicleApi = {
   getAvailable(params) {
     return apiClient.get('/api/vehicles/available/list', { params });
   },
+  getNearby(params) {
+    return apiClient.get('/api/vehicles/nearby/list', { params });
+  },
   getAdminVehicles(params = {}) {
     return apiClient.get('/api/vehicles/admin/list', { params });
   },
