@@ -5,7 +5,7 @@ const LOCATION_TTL_SECONDS = 60 * 60;
 const locationKey = (vehicleId) => `vehicle_location:${vehicleId}`;
 
 export const cacheVehicleLocation = async (vehicleId, location) => {
-  if (!redisClient.isOpen) {
+  if (!redisClient?.isOpen) {
     return;
   }
 
@@ -15,7 +15,7 @@ export const cacheVehicleLocation = async (vehicleId, location) => {
 };
 
 export const getCachedVehicleLocation = async (vehicleId) => {
-  if (!redisClient.isOpen) {
+  if (!redisClient?.isOpen) {
     return null;
   }
 

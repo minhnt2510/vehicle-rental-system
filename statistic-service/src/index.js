@@ -14,9 +14,16 @@ app.use(express.json());
 let redisClient = null;
 
 if (process.env.REDIS_URL) {
-  redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient = createClient({
+    url: process.env.REDIS_URL,
+    socket: {
+      connectTimeout: 5000,
+      // Prevent infinite reconnect loop noise when Redis is unreachable.
+      reconnectStrategy: () => false
+    }
+  });
   redisClient.on('error', (err) => {
-    console.error('Redis error:', err.message);
+    console.error('Redis error:', err?.message || err);
   });
 }
 
@@ -37,8 +44,12 @@ const bootstrap = async () => {
     console.log('Connected to MongoDB');
 
     if (redisClient) {
-      await redisClient.connect();
-      console.log('Connected to Redis');
+      try {
+        await redisClient.connect();
+        console.log('Connected to Redis');
+      } catch (redisError) {
+        console.warn('Redis unavailable, statistic-service continues without cache:', redisError.message);
+      }
     }
 
     app.listen(PORT, () => {
