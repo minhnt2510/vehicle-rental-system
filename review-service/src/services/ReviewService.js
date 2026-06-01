@@ -1,7 +1,10 @@
 import { ReviewRepository } from '../repositories/ReviewRepository.js';
 import mongoose from 'mongoose';
+import axios from 'axios';
 
 const reviewRepository = new ReviewRepository();
+const RENTAL_SERVICE_URL = process.env.RENTAL_SERVICE_URL || 'http://localhost:3003';
+const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'internal-service-token';
 
 function toObjectId(value) {
   if (value instanceof mongoose.Types.ObjectId) return value;
@@ -10,6 +13,29 @@ function toObjectId(value) {
 }
 
 export class ReviewService {
+  async fetchRentalSnapshot(rentalRequestId) {
+    try {
+      const response = await axios.get(
+        `${RENTAL_SERVICE_URL}/api/rentals/internal/${rentalRequestId}`,
+        {
+          headers: {
+            'X-Service-Token': SERVICE_TOKEN
+          }
+        }
+      );
+      const rental = response?.data?.data || response?.data || null;
+      if (rental) return rental;
+    } catch (error) {
+      console.log('Fetch rental via rental-service failed, fallback local query:', error.message);
+    }
+
+    const rental = await mongoose.connection.collection('rental_requests').findOne({
+      _id: toObjectId(rentalRequestId)
+    });
+
+    return rental || null;
+  }
+
   async createReview(reviewData) {
     const rentalRequestId = reviewData?.rental_request_id || reviewData?.contract_id;
     const reviewerId = reviewData?.reviewer_id;
@@ -28,9 +54,7 @@ export class ReviewService {
       throw new Error('Rating must be between 1 and 5');
     }
 
-    const rental = await mongoose.connection.collection('rental_requests').findOne({
-      _id: toObjectId(rentalRequestId)
-    });
+    const rental = await this.fetchRentalSnapshot(rentalRequestId);
 
     if (!rental) {
       throw new Error('Rental request not found');

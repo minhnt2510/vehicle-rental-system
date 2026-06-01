@@ -8,6 +8,12 @@ function isAdmin(req) {
   return String(req.userRole || '').toUpperCase() === 'ADMIN';
 }
 
+function isInternalRequest(req) {
+  const headerToken = req.headers['x-service-token'];
+  const expectedToken = process.env.SERVICE_TOKEN || 'internal-service-token';
+  return String(headerToken || '') === String(expectedToken || '');
+}
+
 function sendError(res, error, fallbackMessage) {
   return res.status(error.status || 500).json({
     success: false,
@@ -15,6 +21,21 @@ function sendError(res, error, fallbackMessage) {
     error: error.message || fallbackMessage || 'Request failed'
   });
 }
+
+router.get('/internal/:rentalId', async (req, res) => {
+  try {
+    if (!isInternalRequest(req)) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    const rental = await rentalService.getRentalById(req.params.rentalId);
+    if (!rental) {
+      return res.status(404).json({ success: false, error: 'Rental not found' });
+    }
+    return res.json({ success: true, data: rental });
+  } catch (error) {
+    return sendError(res, error, 'Không thể lấy rental nội bộ');
+  }
+});
 
 router.post('/request', authenticateToken, async (req, res) => {
   try {
