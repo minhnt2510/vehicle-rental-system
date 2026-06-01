@@ -1,5 +1,5 @@
 @startuml c4-container-rentcar
-!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include <C4/C4_Container>
 
 LAYOUT_LEFT_RIGHT()
 LAYOUT_WITH_LEGEND()
@@ -32,14 +32,9 @@ System_Boundary(rentcar_boundary, "RentCar Premium") {
   Container(ai_service, "ai-service", "Node.js", "AI recommendation and analysis API")
   Container(ai_agent_service, "ai-agent-service", "Node.js", "AI booking assistant / chat agent")
 
-  ContainerDb(
-    mongodb,
-    "MongoDB Atlas",
-    "Document DB",
-    "rentcar_user_db, rentcar_vehicle_db, rentcar_rental_db,\nrentcar_contract_db, rentcar_payment_db, rentcar_tracking_db,\nrentcar_dispute_db, rentcar_review_db, rentcar_notification_db,\nrentcar_statistic_db, rentcar_image_db"
-  )
+  ContainerDb(mongodb, "MongoDB Atlas", "Document DB", "Service databases: user, vehicle, rental, contract, payment, tracking, dispute, review, notification, statistic, image")
   ContainerDb(redis, "Redis", "In-memory cache", "Cache and hot data")
-  ContainerQueue(rabbitmq, "RabbitMQ", "Message broker", "Async event bus")
+  Container(rabbitmq, "RabbitMQ", "Message broker", "Async event bus")
 }
 
 Rel(renter, web_app, "Uses renter flows", "HTTPS")

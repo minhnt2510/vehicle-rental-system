@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "migrate:atlas:split": "node scripts/migrate-atlas-shared-to-service-dbs.js"
+    "migrate:atlas:split": "node scripts/migrate-atlas-shared-to-service-dbs.js",
+    "migrate:local:atlas:split": "node scripts/migrate-local-to-atlas-service-dbs.js",
+    "check:atlas": "node scripts/check-atlas-data.js",
+    "test:final": "node scripts/final-system-check.js"
   },
   "dependencies": {
     "mongodb": "^6.18.0"

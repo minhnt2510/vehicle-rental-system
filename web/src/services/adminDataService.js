@@ -8,15 +8,6 @@
   userApi,
   vehicleApi
 } from '../api';
-import {
-  MOCK_ADMIN_CONTRACTS,
-  MOCK_ADMIN_DISPUTES,
-  MOCK_ADMIN_OWNER_APPLICATIONS,
-  MOCK_ADMIN_PAYMENTS,
-  MOCK_ADMIN_RENTALS,
-  MOCK_ADMIN_USERS,
-  MOCK_ADMIN_VEHICLES
-} from '../data/mockAdminData';
 import { pickArray } from '../utils/formatters';
 
 function dedupeById(rows = []) {
@@ -29,7 +20,7 @@ function dedupeById(rows = []) {
   return Array.from(map.values());
 }
 
-async function fromSingleApi(loader, fallbackRows) {
+async function fromSingleApi(loader) {
   try {
     const response = await loader();
     return {
@@ -40,15 +31,15 @@ async function fromSingleApi(loader, fallbackRows) {
     };
   } catch (error) {
     return {
-      rows: fallbackRows,
-      source: 'fallback',
-      fallback: true,
-      error: error?.response?.data?.error || error?.message || 'API chưa sẵn sàng'
+      rows: [],
+      source: 'api_error',
+      fallback: false,
+      error: error?.response?.data?.error || error?.message || 'API lỗi'
     };
   }
 }
 
-async function fromMultipleApi(loaders = [], fallbackRows = []) {
+async function fromMultipleApi(loaders = []) {
   const results = await Promise.allSettled(loaders.map((loader) => loader()));
   const fulfilledRows = results
     .filter((item) => item.status === 'fulfilled')
@@ -65,50 +56,45 @@ async function fromMultipleApi(loaders = [], fallbackRows = []) {
 
   const firstError = results.find((item) => item.status === 'rejected')?.reason;
   return {
-    rows: fallbackRows,
-    source: 'fallback',
-    fallback: true,
-    error: firstError?.response?.data?.error || firstError?.message || 'API chưa sẵn sàng'
+    rows: [],
+    source: 'api_error',
+    fallback: false,
+    error: firstError?.response?.data?.error || firstError?.message || 'API lỗi'
   };
 }
 
 export async function getAdminUsersData() {
-  return fromSingleApi(() => userApi.getAdminUsers({ page: 1, limit: 120 }), MOCK_ADMIN_USERS);
+  return fromSingleApi(() => userApi.getAdminUsers({ page: 1, limit: 120 }));
 }
 
 export async function getAdminOwnerApplicationsData(statusFilter = 'ALL') {
   const params = statusFilter === 'ALL' ? {} : { status: statusFilter };
-  const fallbackRows =
-    statusFilter === 'ALL'
-      ? MOCK_ADMIN_OWNER_APPLICATIONS
-      : MOCK_ADMIN_OWNER_APPLICATIONS.filter(
-          (item) => String(item.status || '').toUpperCase() === String(statusFilter || '').toUpperCase()
-        );
-
-  return fromSingleApi(() => ownerApplicationApi.getOwnerApplications(params), fallbackRows);
+  return fromSingleApi(() => ownerApplicationApi.getOwnerApplications(params));
 }
 
 export async function getAdminVehiclesData() {
   return fromSingleApi(
-    () => (vehicleApi.getAdminVehicles ? vehicleApi.getAdminVehicles({ page: 1, limit: 120 }) : vehicleApi.getAvailable({ page: 1, limit: 120 })),
-    MOCK_ADMIN_VEHICLES
+    () =>
+      vehicleApi.getAdminVehicles
+        ? vehicleApi.getAdminVehicles({ page: 1, limit: 120 })
+        : vehicleApi.getAvailable({ page: 1, limit: 120 })
   );
 }
 
 export async function getAdminRentalsData() {
-  return fromSingleApi(() => rentalApi.getAdminRentals({ limit: 300 }), MOCK_ADMIN_RENTALS);
+  return fromSingleApi(() => rentalApi.getAdminRentals({ limit: 300 }));
 }
 
 export async function getAdminContractsData() {
-  return fromSingleApi(() => contractApi.getAdminContracts({ limit: 300 }), MOCK_ADMIN_CONTRACTS);
+  return fromSingleApi(() => contractApi.getAdminContracts({ limit: 300 }));
 }
 
 export async function getAdminPaymentsData() {
-  return fromSingleApi(() => paymentApi.getAdminPayments({ limit: 300 }), MOCK_ADMIN_PAYMENTS);
+  return fromSingleApi(() => paymentApi.getAdminPayments({ limit: 300 }));
 }
 
 export async function getAdminDisputesData() {
-  return fromSingleApi(() => disputeApi.getAdminDisputes({ limit: 300 }), MOCK_ADMIN_DISPUTES);
+  return fromSingleApi(() => disputeApi.getAdminDisputes({ limit: 300 }));
 }
 
 function monthLabel(dateValue) {
@@ -220,19 +206,13 @@ export async function getAdminDashboardData() {
     .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
     .slice(0, 6);
 
-  const fallbackUsed = [
-    usersRes.fallback,
-    ownerAppRes.fallback,
-    vehiclesRes.fallback,
-    rentalsRes.fallback,
-    contractsRes.fallback,
-    paymentsRes.fallback,
-    disputesRes.fallback
-  ].some(Boolean);
+  const hasApiError = [usersRes, ownerAppRes, vehiclesRes, rentalsRes, contractsRes, paymentsRes, disputesRes].some(
+    (item) => Boolean(item.error)
+  );
 
   return {
-    source: fallbackUsed ? 'fallback' : 'api',
-    fallback: fallbackUsed,
+    source: hasApiError ? 'api_error' : 'api',
+    fallback: false,
     error: [
       usersRes.error,
       ownerAppRes.error,

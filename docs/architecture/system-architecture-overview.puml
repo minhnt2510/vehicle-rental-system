@@ -4,20 +4,25 @@ skinparam shadowing false
 skinparam componentStyle rectangle
 skinparam packageStyle rectangle
 skinparam defaultFontName Segoe UI
-skinparam ArrowColor #4fd1c5
+skinparam ArrowColor #2563eb
+skinparam ArrowThickness 1.5
+
 skinparam package {
-  BackgroundColor #0f172a
-  BorderColor #38bdf8
-  FontColor #e2e8f0
+  BackgroundColor #f8fafc
+  BorderColor #2563eb
+  FontColor #0f172a
 }
+
 skinparam component {
-  BackgroundColor #1e293b
-  BorderColor #60a5fa
-  FontColor #f8fafc
+  BackgroundColor #ffffff
+  BorderColor #2563eb
+  FontColor #0f172a
 }
+
 skinparam actor {
-  BorderColor #22d3ee
-  FontColor #f8fafc
+  BackgroundColor #ffffff
+  BorderColor #2563eb
+  FontColor #0f172a
 }
 
 title RentCar Premium - System Architecture Overview (Aligned With Current Code)
