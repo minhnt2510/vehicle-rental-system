@@ -30,3 +30,8 @@ KEY_SETUP.md
 e2e-result.json
 image-service/uploads/
 render-*.env
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
